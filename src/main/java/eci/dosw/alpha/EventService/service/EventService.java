@@ -1,6 +1,9 @@
-package eci.dosw.alpha.EventService.service
+package eci.dosw.alpha.EventService.service;
 
-
+import eci.dosw.alpha.EventService.dto.RSVPResponse;
+import eci.dosw.alpha.EventService.exception.CapacityExhaustedException;
+import eci.dosw.alpha.EventService.exception.EventNotActiveException;
+import eci.dosw.alpha.EventService.exception.RsvpNotFoundException;
 import eci.dosw.alpha.EventService.model.Event;
 import eci.dosw.alpha.EventService.model.RSVP;
 import eci.dosw.alpha.EventService.repository.EventRepository;
@@ -20,7 +23,6 @@ public class EventService {
         this.rsvpRepository = rsvpRepository;
     }
 
-    // Listar eventos
     public List<Event> getAllEvents() {
         return eventRepository.findAll();
     }
@@ -29,61 +31,76 @@ public class EventService {
         return eventRepository.findByCategory(category);
     }
 
-    public Event getEventById(String id) {
-        return eventRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Evento no encontrado"));
+    /**
+     * Filtro combinado: categoría + rango de fechas (ISO YYYY-MM-DD).
+     * Cualquier parámetro es opcional.
+     */
+    public List<Event> getEventsByFilter(String category, String startDate, String endDate) {
+        List<Event> events = category != null
+                ? eventRepository.findByCategory(category)
+                : eventRepository.findAll();
+
+        if (startDate != null) {
+            events = events.stream()
+                    .filter(e -> e.getDate() != null && e.getDate().compareTo(startDate) >= 0)
+                    .toList();
+        }
+        if (endDate != null) {
+            events = events.stream()
+                    .filter(e -> e.getDate() != null && e.getDate().compareTo(endDate) <= 0)
+                    .toList();
+        }
+        return events;
     }
 
-    // Crear evento
+    public Event getEventById(String id) {
+        return eventRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Evento no encontrado: " + id));
+    }
+
     public Event createEvent(Event event) {
         event.setAvailableCapacity(event.getCapacity());
         event.setStatus("ACTIVE");
         return eventRepository.save(event);
     }
 
-    // RSVP
-    public String confirmRSVP(String userId, String eventId) {
+    // ── RSVP ──────────────────────────────────────────────────────────────────
 
+    /** E1: evento no activo → 409. E2: cupo agotado → 409. */
+    public RSVPResponse confirmRSVP(String userId, String eventId) {
         Event event = getEventById(eventId);
 
-        if (!event.getStatus().equals("ACTIVE")) {
-            throw new RuntimeException("Evento no disponible");
+        if (!"ACTIVE".equals(event.getStatus())) {
+            throw new EventNotActiveException(eventId);
         }
-
         if (event.getAvailableCapacity() <= 0) {
-            throw new RuntimeException("Cupo agotado");
+            throw new CapacityExhaustedException(eventId);
         }
 
-        RSVP existing = rsvpRepository
-                .findByUserIdAndEventId(userId, eventId)
-                .orElse(null);
-
-        if (existing != null && existing.getStatus().equals("CONFIRMED")) {
-            throw new RuntimeException("Ya confirmaste asistencia");
+        RSVP existing = rsvpRepository.findByUserIdAndEventId(userId, eventId).orElse(null);
+        if (existing != null && "CONFIRMED".equals(existing.getStatus())) {
+            throw new RuntimeException("Ya tienes un RSVP confirmado para este evento.");
         }
 
-        RSVP rsvp = new RSVP();
+        RSVP rsvp = existing != null ? existing : new RSVP();
         rsvp.setUserId(userId);
         rsvp.setEventId(eventId);
         rsvp.setStatus("CONFIRMED");
-
         rsvpRepository.save(rsvp);
 
         event.setAvailableCapacity(event.getAvailableCapacity() - 1);
         eventRepository.save(event);
 
-        return "RSVP confirmado";
+        return new RSVPResponse("CONFIRMED", event.getAvailableCapacity(), getUserAgenda(userId));
     }
 
-    // Cancelar RSVP
-    public String cancelRSVP(String userId, String eventId) {
+    /** E3: RSVP inexistente → 404. Cancelar libera cupo. */
+    public RSVPResponse cancelRSVP(String userId, String eventId) {
+        RSVP rsvp = rsvpRepository.findByUserIdAndEventId(userId, eventId)
+                .orElseThrow(() -> new RsvpNotFoundException(userId, eventId));
 
-        RSVP rsvp = rsvpRepository
-                .findByUserIdAndEventId(userId, eventId)
-                .orElseThrow(() -> new RuntimeException("RSVP no existe"));
-
-        if (rsvp.getStatus().equals("CANCELLED")) {
-            throw new RuntimeException("RSVP ya estaba cancelado");
+        if ("CANCELLED".equals(rsvp.getStatus())) {
+            throw new RuntimeException("El RSVP ya estaba cancelado.");
         }
 
         rsvp.setStatus("CANCELLED");
@@ -93,6 +110,14 @@ public class EventService {
         event.setAvailableCapacity(event.getAvailableCapacity() + 1);
         eventRepository.save(event);
 
-        return "RSVP cancelado";
+        return new RSVPResponse("CANCELLED", event.getAvailableCapacity(), getUserAgenda(userId));
+    }
+
+    /** Agenda del usuario: IDs de eventos con RSVP CONFIRMED. */
+    public List<String> getUserAgenda(String userId) {
+        return rsvpRepository.findByUserIdAndStatus(userId, "CONFIRMED")
+                .stream()
+                .map(RSVP::getEventId)
+                .toList();
     }
 }
