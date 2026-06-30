@@ -30,7 +30,7 @@ jobs:
           cache: maven
 
       - name: Build, test & verificar cobertura JaCoCo (≥80%)
-        run: ./mvnw -B verify
+        run: chmod +x mvnw && ./mvnw -B verify
 
       - name: Publicar reporte JaCoCo
         if: always()
