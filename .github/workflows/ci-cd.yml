@@ -112,10 +112,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
 
     steps:
       - name: Deploy vía SSH
-        if: ${{ secrets.DEPLOY_HOST != '' }}
+        if: ${{ env.DEPLOY_HOST != '' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -137,7 +139,7 @@ jobs:
               --name event-service \
               --restart unless-stopped \
               -p 8081:8081 \
-              -e SPRING_DATA_MONGODB_URI="${{ secrets.MONGO_URI }}" \
+              -e SPRING_MONGODB_URI="${{ secrets.MONGO_URI }}" \
               -e SPRING_APPLICATION_NAME=EventService \
               ${{ env.IMAGE_NAME }}:latest
 
