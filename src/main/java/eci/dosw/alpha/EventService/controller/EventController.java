@@ -1,5 +1,6 @@
 package eci.dosw.alpha.EventService.controller;
 
+import eci.dosw.alpha.EventService.dto.CreateEventRequest;
 import eci.dosw.alpha.EventService.dto.RSVPRequest;
 import eci.dosw.alpha.EventService.dto.RSVPResponse;
 import eci.dosw.alpha.EventService.model.Event;
@@ -56,7 +57,13 @@ public class EventController {
                description = "Registra un nuevo evento. El estado se fija en ACTIVE y el cupo disponible se inicializa con la capacidad total.")
     @ApiResponse(responseCode = "200", description = "Evento creado")
     @PostMapping
-    public ResponseEntity<Event> createEvent(@RequestBody Event event) {
+    public ResponseEntity<Event> createEvent(@RequestBody CreateEventRequest request) {
+        Event event = new Event();
+        event.setName(request.getName());
+        event.setDescription(request.getDescription());
+        event.setCategory(request.getCategory());
+        event.setDate(request.getDate());
+        event.setCapacity(request.getCapacity());
         return ResponseEntity.ok(eventService.createEvent(event));
     }
 

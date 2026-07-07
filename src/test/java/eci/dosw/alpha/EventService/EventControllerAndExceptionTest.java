@@ -1,6 +1,7 @@
 package eci.dosw.alpha.EventService;
 
 import eci.dosw.alpha.EventService.controller.EventController;
+import eci.dosw.alpha.EventService.dto.CreateEventRequest;
 import eci.dosw.alpha.EventService.dto.RSVPRequest;
 import eci.dosw.alpha.EventService.dto.RSVPResponse;
 import eci.dosw.alpha.EventService.exception.CapacityExhaustedException;
@@ -69,10 +70,13 @@ class EventControllerAndExceptionTest {
 
     @Test
     void createEvent_delegatesToService() {
-        Event ev = new Event();
-        when(eventService.createEvent(ev)).thenReturn(ev);
+        CreateEventRequest req = new CreateEventRequest();
+        req.setName("Charla");
+        req.setCapacity(20);
+        Event saved = new Event();
+        when(eventService.createEvent(any(Event.class))).thenReturn(saved);
 
-        assertThat(controller.createEvent(ev).getBody()).isEqualTo(ev);
+        assertThat(controller.createEvent(req).getBody()).isEqualTo(saved);
     }
 
     @Test
