@@ -31,3 +31,13 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Caveman (agent rule files) ###
+.cursor/
+.windsurf/
+.clinerules/
+.opencode/
+.agents/
+.github/copilot-instructions.md
+AGENTS.md
+instrucciones.txt
