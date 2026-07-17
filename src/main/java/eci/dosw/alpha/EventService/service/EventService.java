@@ -4,23 +4,36 @@ import eci.dosw.alpha.EventService.dto.RSVPResponse;
 import eci.dosw.alpha.EventService.exception.CapacityExhaustedException;
 import eci.dosw.alpha.EventService.exception.EventNotActiveException;
 import eci.dosw.alpha.EventService.exception.RsvpNotFoundException;
+import eci.dosw.alpha.EventService.messaging.EventBroadcastMessage;
 import eci.dosw.alpha.EventService.model.Event;
 import eci.dosw.alpha.EventService.model.RSVP;
 import eci.dosw.alpha.EventService.repository.EventRepository;
 import eci.dosw.alpha.EventService.repository.RSVPRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+@Slf4j
 @Service
 public class EventService {
 
     private final EventRepository eventRepository;
     private final RSVPRepository rsvpRepository;
+    private final RabbitTemplate rabbitTemplate;
 
-    public EventService(EventRepository eventRepository, RSVPRepository rsvpRepository) {
+    @Value("${rabbitmq.exchange.notification:notification.exchange}")
+    private String notificationExchange;
+
+    private static final String EVENT_CREATED_ROUTING_KEY = "broadcast.event.created";
+
+    public EventService(EventRepository eventRepository, RSVPRepository rsvpRepository,
+                         RabbitTemplate rabbitTemplate) {
         this.eventRepository = eventRepository;
         this.rsvpRepository = rsvpRepository;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     public List<Event> getAllEvents() {
@@ -61,7 +74,32 @@ public class EventService {
     public Event createEvent(Event event) {
         event.setAvailableCapacity(event.getCapacity());
         event.setStatus("ACTIVE");
-        return eventRepository.save(event);
+        Event saved = eventRepository.save(event);
+        publishEventCreated(saved);
+        return saved;
+    }
+
+    /**
+     * Publicidad del evento nuevo a todos los dispositivos (push vía
+     * notification-service). No debe tumbar la creación del evento si
+     * RabbitMQ está caído: se registra y se sigue.
+     */
+    private void publishEventCreated(Event event) {
+        try {
+            rabbitTemplate.convertAndSend(
+                    notificationExchange,
+                    EVENT_CREATED_ROUTING_KEY,
+                    EventBroadcastMessage.builder()
+                            .id(event.getId())
+                            .name(event.getName())
+                            .description(event.getDescription())
+                            .category(event.getCategory())
+                            .date(event.getDate())
+                            .build());
+        } catch (Exception e) {
+            log.warn("No se pudo publicar el evento creado {} para notificaciones push: {}",
+                    event.getId(), e.getMessage());
+        }
     }
 
     // ── RSVP ──────────────────────────────────────────────────────────────────

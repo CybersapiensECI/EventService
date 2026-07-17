@@ -200,3 +200,17 @@ jobs:
         with:
           app-name: ${{ env.WEBAPP_NAME }}
           images: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
+
+      - name: Configurar RabbitMQ (publica evento creado para notificaciones push)
+        run: |
+          RG=$(az webapp list --query "[?name=='${{ env.WEBAPP_NAME }}'].resourceGroup" -o tsv)
+          az webapp config appsettings set \
+            --name ${{ env.WEBAPP_NAME }} \
+            --resource-group "$RG" \
+            --settings \
+              SPRING_RABBITMQ_HOST="${{ secrets.RABBITMQ_HOST }}" \
+              SPRING_RABBITMQ_PORT="5671" \
+              SPRING_RABBITMQ_USERNAME="${{ secrets.RABBITMQ_USERNAME }}" \
+              SPRING_RABBITMQ_PASSWORD="${{ secrets.RABBITMQ_PASSWORD }}" \
+              SPRING_RABBITMQ_VIRTUAL_HOST="${{ secrets.RABBITMQ_VIRTUAL_HOST }}" \
+              SPRING_RABBITMQ_SSL_ENABLED="true"
