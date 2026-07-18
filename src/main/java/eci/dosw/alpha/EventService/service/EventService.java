@@ -5,6 +5,7 @@ import eci.dosw.alpha.EventService.exception.CapacityExhaustedException;
 import eci.dosw.alpha.EventService.exception.EventNotActiveException;
 import eci.dosw.alpha.EventService.exception.RsvpNotFoundException;
 import eci.dosw.alpha.EventService.messaging.EventBroadcastMessage;
+import eci.dosw.alpha.EventService.messaging.RsvpConfirmedMessage;
 import eci.dosw.alpha.EventService.model.Event;
 import eci.dosw.alpha.EventService.model.RSVP;
 import eci.dosw.alpha.EventService.repository.EventRepository;
@@ -28,6 +29,7 @@ public class EventService {
     private String notificationExchange;
 
     private static final String EVENT_CREATED_ROUTING_KEY = "broadcast.event.created";
+    private static final String RSVP_CONFIRMED_ROUTING_KEY = "event.rsvp-confirmed";
 
     public EventService(EventRepository eventRepository, RSVPRepository rsvpRepository,
                          RabbitTemplate rabbitTemplate) {
@@ -128,8 +130,30 @@ public class EventService {
 
         event.setAvailableCapacity(event.getAvailableCapacity() - 1);
         eventRepository.save(event);
+        publishRsvpConfirmed(userId, event);
 
         return new RSVPResponse("CONFIRMED", event.getAvailableCapacity(), getUserAgenda(userId));
+    }
+
+    /**
+     * GamificationService desbloquea monas de asistencia (ASISTENTE_VIP,
+     * INVITADO_ESPECIAL) a partir de esto. No debe tumbar la confirmación
+     * si RabbitMQ está caído: se registra y se sigue.
+     */
+    private void publishRsvpConfirmed(String userId, Event event) {
+        try {
+            rabbitTemplate.convertAndSend(
+                    notificationExchange,
+                    RSVP_CONFIRMED_ROUTING_KEY,
+                    RsvpConfirmedMessage.builder()
+                            .userId(userId)
+                            .eventId(event.getId())
+                            .eventName(event.getName())
+                            .build());
+        } catch (Exception e) {
+            log.warn("No se pudo publicar el RSVP confirmado de {} para el evento {}: {}",
+                    userId, event.getId(), e.getMessage());
+        }
     }
 
     /** E3: RSVP inexistente → 404. Cancelar libera cupo. */
